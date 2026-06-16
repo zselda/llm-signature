@@ -133,7 +133,7 @@ def run_signature_evaluation(
         talimat_images = to_image_list(row[talimat_col])
 
         result, reasoning, uncertain, pair_results = compare_signature_sets(
-            bbhs_images, talimat_images
+            bbhs_images, talimat_images, row_id=idx
         )
         llm_results.append(result)
         llm_reasonings.append(reasoning)

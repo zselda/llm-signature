@@ -16,14 +16,19 @@ _UNCERTAIN_PAT = re.compile(
 _DISSIMILAR_PAT = re.compile(r"dissimil[ia]+r", re.IGNORECASE)
 _SIMILAR_PAT = re.compile(r"simil[ia]+r", re.IGNORECASE)
  
-def signature_classifier(images, pagination_mode=True):
+def signature_classifier(images, pagination_mode=True, log_label=""):
     """Classify a signature pair as similar / dissimilar.
 
     ``images`` is a sequence of NumPy arrays (one (224, 224) array per signature).
     With ``pagination_mode=False`` (the false-labelled flow) the whole pair is sent
     to the model in a single multimodal request; with ``pagination_mode=True`` each
     array is sent individually.
+
+    ``log_label`` is an optional context string (e.g. row/pair identifiers) that is
+    prefixed to every printed log line so the output can be traced back to its row
+    and signature pair.
     """
+    prefix = f"[{log_label}] " if log_label else ""
     start_time2 = datetime.now()
 
     SYSTEM_PROMPT = prompt_lib.agent_signature_false_evaluator
@@ -34,7 +39,7 @@ def signature_classifier(images, pagination_mode=True):
     if pagination_mode:
         for idx, array in enumerate(images):
             start_time = datetime.now()
-            print("processing image", idx)
+            print(f"{prefix}processing image {idx}")
             result = client.generate_with_image(
                 model="gemma_27b",
                 images=[array],
@@ -44,16 +49,16 @@ def signature_classifier(images, pagination_mode=True):
 
             end_time = datetime.now()
 
-            print(end_time - start_time)
+            print(f"{prefix}elapsed {end_time - start_time}")
 
-            print(result)
+            print(f"{prefix}{result}")
             results[idx] = result
         end_time2 = datetime.now()
-        print(end_time2 - start_time2)
+        print(f"{prefix}total elapsed {end_time2 - start_time2}")
 
     else:
         start_time = datetime.now()
-        print("processing pair")
+        print(f"{prefix}processing pair")
         results = client.generate_with_image(
             model="gemma_27b",
             images=images,
@@ -63,9 +68,9 @@ def signature_classifier(images, pagination_mode=True):
 
         end_time = datetime.now()
 
-        print(end_time - start_time)
+        print(f"{prefix}elapsed {end_time - start_time}")
 
-        print(results)
+        print(f"{prefix}{results}")
 
     return results
 
@@ -113,11 +118,13 @@ def classify_verdict(raw_text):
     return label, _extract_reasoning(raw_text)
 
 
-def compare_signature_sets(bbhs_images, talimat_images):
+def compare_signature_sets(bbhs_images, talimat_images, row_id=None):
     """Compare every bbhs × talimat detection pair and aggregate to a row verdict.
 
     Each pair is sent to the model as exactly two images (matching the prompt's
-    "2 signatures" framing). Aggregation:
+    "2 signatures" framing). ``row_id`` is an optional identifier (e.g. the
+    dataframe row index) that is included in the printed log lines together with
+    the bbhs/talimat pair indices. Aggregation:
       - llm_result = 1 (similar) if ANY pair is judged similar, else 0.
       - uncertain flag = 1 if any pair is uncertain AND no pair is similar.
     If either side has no detections, no comparison is run.
@@ -138,17 +145,21 @@ def compare_signature_sets(bbhs_images, talimat_images):
         )
         return None, note, 0, []
 
+    row_tag = f"row={row_id} " if row_id is not None else ""
     labels = []
     pair_results = []
     pair_reports = []
     for bi, bbhs_img in enumerate(bbhs_images):
         for ti, talimat_img in enumerate(talimat_images):
-            raw = signature_classifier([bbhs_img, talimat_img], pagination_mode=False)
+            log_label = f"{row_tag}bbhs#{bi} vs talimat#{ti}"
+            raw = signature_classifier(
+                [bbhs_img, talimat_img], pagination_mode=False, log_label=log_label
+            )
             label, reasoning = classify_verdict(raw)
             labels.append(label)
             # 1 = similar, 0 = dissimilar, -1 = uncertain
             pair_results.append(1 if label == "similar" else (-1 if label == "uncertain" else 0))
-            pair_reports.append(f"[bbhs#{bi} vs talimat#{ti} -> {label}] {reasoning}")
+            pair_reports.append(f"[{log_label} -> {label}] {reasoning}")
 
     any_similar = any(label == "similar" for label in labels)
     any_uncertain = any(label == "uncertain" for label in labels)
