@@ -15,8 +15,34 @@ _UNCERTAIN_PAT = re.compile(
 # [ia]+ tolerates both correct ("similar") and the prompt's misspelling ("similiar").
 _DISSIMILAR_PAT = re.compile(r"dissimil[ia]+r", re.IGNORECASE)
 _SIMILAR_PAT = re.compile(r"simil[ia]+r", re.IGNORECASE)
- 
-def signature_classifier(images, pagination_mode=True, log_label=""):
+
+# Which upstream model produced the original **dissimilar** label that the LLM is
+# asked to review. Each key maps to the system prompt that names that model, so
+# the LLM knows whose judgement it is re-checking. "SIAMESE" preserves the
+# original behaviour; "ML" points to a generic ML-model prompt.
+_FIRST_MODEL_PROMPTS = {
+    "SIAMESE": prompt_lib.agent_signature_false_evaluator,
+    "ML": prompt_lib.agent_signature_false_evaluator_ml,
+}
+
+
+def select_system_prompt(first_model="SIAMESE"):
+    """Return the system prompt naming ``first_model`` as the upstream evaluator.
+
+    ``first_model`` is matched case-insensitively against the supported sources
+    (``"SIAMESE"``, ``"ML"``). Raises ValueError for any other value so a typo
+    fails loudly instead of silently picking the wrong prompt.
+    """
+    key = str(first_model).strip().upper()
+    if key not in _FIRST_MODEL_PROMPTS:
+        raise ValueError(
+            f"Unknown first_model {first_model!r}; "
+            f"expected one of {sorted(_FIRST_MODEL_PROMPTS)}"
+        )
+    return _FIRST_MODEL_PROMPTS[key]
+
+
+def signature_classifier(images, pagination_mode=True, log_label="", first_model="SIAMESE"):
     """Classify a signature pair as similar / dissimilar.
 
     ``images`` is a sequence of NumPy arrays (one (224, 224) array per signature).
@@ -27,11 +53,14 @@ def signature_classifier(images, pagination_mode=True, log_label=""):
     ``log_label`` is an optional context string (e.g. row/pair identifiers) that is
     prefixed to every printed log line so the output can be traced back to its row
     and signature pair.
+
+    ``first_model`` selects which upstream model ("SIAMESE" or "ML") is named in
+    the system prompt as the source of the original **dissimilar** label.
     """
     prefix = f"[{log_label}] " if log_label else ""
     start_time2 = datetime.now()
 
-    SYSTEM_PROMPT = prompt_lib.agent_signature_false_evaluator
+    SYSTEM_PROMPT = select_system_prompt(first_model)
 
 
     USER_PROMPT = """ """
@@ -118,13 +147,15 @@ def classify_verdict(raw_text):
     return label, _extract_reasoning(raw_text)
 
 
-def compare_signature_sets(bbhs_images, talimat_images, row_id=None):
+def compare_signature_sets(bbhs_images, talimat_images, row_id=None, first_model="SIAMESE"):
     """Compare every bbhs × talimat detection pair and aggregate to a row verdict.
 
     Each pair is sent to the model as exactly two images (matching the prompt's
     "2 signatures" framing). ``row_id`` is an optional identifier (e.g. the
     dataframe row index) that is included in the printed log lines together with
-    the bbhs/talimat pair indices. Aggregation:
+    the bbhs/talimat pair indices. ``first_model`` ("SIAMESE" or "ML") selects which
+    upstream model is named in the prompt as the source of the **dissimilar** label.
+    Aggregation:
       - llm_result = 1 (similar) if ANY pair is judged similar, else 0.
       - uncertain flag = 1 if any pair is uncertain AND no pair is similar.
     If either side has no detections, no comparison is run.
@@ -153,7 +184,8 @@ def compare_signature_sets(bbhs_images, talimat_images, row_id=None):
         for ti, talimat_img in enumerate(talimat_images):
             log_label = f"{row_tag}bbhs#{bi} vs talimat#{ti}"
             raw = signature_classifier(
-                [bbhs_img, talimat_img], pagination_mode=False, log_label=log_label
+                [bbhs_img, talimat_img], pagination_mode=False,
+                log_label=log_label, first_model=first_model,
             )
             label, reasoning = classify_verdict(raw)
             labels.append(label)

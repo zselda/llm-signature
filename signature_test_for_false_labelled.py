@@ -1,5 +1,5 @@
 
-from Agents.false_labelled_control_gate import compare_signature_sets
+from Agents.false_labelled_control_gate import compare_signature_sets, select_system_prompt
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -104,6 +104,7 @@ def run_signature_evaluation(
     df,
     bbhs_col: str = BBHS_COL,
     talimat_col: str = TALIMAT_COL,
+    first_model: str = "SIAMESE",
 ):
     """Run the LLM signature gate over an in-memory dataframe and return a new one.
 
@@ -119,9 +120,17 @@ def run_signature_evaluation(
         llm_reasoning    : the model's reasoning (per-pair, aggregated)
         llm_uncertain    : flag -> 1 = at least one pair was uncertain and none similar
 
+    ``first_model`` selects which upstream model originally labelled the pairs as
+    **dissimilar**, so the LLM is told whose judgement it is reviewing:
+        "SIAMESE" (default) -> agent_signature_false_evaluator
+        "ML"                -> agent_signature_false_evaluator_ml
+
     Usage (e.g. from the Jupyter notebook that already holds ``df``):
-        output_df = run_signature_evaluation(df)
+        output_df = run_signature_evaluation(df, first_model="ML")
     """
+    # Validate up-front so a bad value fails before any LLM calls are made.
+    select_system_prompt(first_model)
+
     output_df = df.copy()
 
     llm_results = []
@@ -133,7 +142,7 @@ def run_signature_evaluation(
         talimat_images = to_image_list(row[talimat_col])
 
         result, reasoning, uncertain, pair_results = compare_signature_sets(
-            bbhs_images, talimat_images, row_id=idx
+            bbhs_images, talimat_images, row_id=idx, first_model=first_model
         )
         llm_results.append(result)
         llm_reasonings.append(reasoning)

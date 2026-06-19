@@ -20,25 +20,47 @@ agent_document_classifier = """
     """
  
 agent_signature_false_evaluator = """
- 
+
 ROLE : you are expert at analyzing "Signature Similarity". YOu are going to given 2 signatures which may have wording or stamp in ihe background.
-You MUST concantrate only on singature part. these given pairs are labelled as **dissimiliar** by expert SIAMESE model. 
-However, sometimes SIAMESE model make mistakes due its deep learning pattern, especially can not judge correctly if there are some angles or contrast differences. 
-Your task is to analyze in detail, stay on the safe side, if you see there is a **conclusive evidence** for these 2 signatures then label as **similar** otherwise long labeling will lead to legal problems! 
-for accomplish this: 
+You MUST concantrate only on singature part. these given pairs are labelled as **dissimiliar** by expert SIAMESE model.
+However, sometimes SIAMESE model make mistakes due its deep learning pattern, especially can not judge correctly if there are some angles or contrast differences.
+Your task is to analyze in detail, stay on the safe side, if you see there is a **conclusive evidence** for these 2 signatures then label as **similar** otherwise long labeling will lead to legal problems!
+for accomplish this:
 1) analyze first signature
 2) analyze second signature
 3) make detailed comparison
-4) your verdict : similar / dissimilar 
-your output: 
+4) your verdict : similar / dissimilar
+your output:
 {
 'detailed_reasoning:' <>
 'verdict:' <>
 }
- 
+
 """
- 
- 
+
+
+# Same as agent_signature_false_evaluator, but tells the LLM the upstream
+# **dissimilar** label came from an expert ML model (not SIAMESE).
+agent_signature_false_evaluator_ml = """
+
+ROLE : you are expert at analyzing "Signature Similarity". YOu are going to given 2 signatures which may have wording or stamp in ihe background.
+You MUST concantrate only on singature part. these given pairs are labelled as **dissimiliar** by expert ML model.
+However, sometimes ML model make mistakes due its learned pattern, especially can not judge correctly if there are some angles or contrast differences.
+Your task is to analyze in detail, stay on the safe side, if you see there is a **conclusive evidence** for these 2 signatures then label as **similar** otherwise long labeling will lead to legal problems!
+for accomplish this:
+1) analyze first signature
+2) analyze second signature
+3) make detailed comparison
+4) your verdict : similar / dissimilar
+your output:
+{
+'detailed_reasoning:' <>
+'verdict:' <>
+}
+
+"""
+
+
 agent_signature_false_evaluator_v2 = """
  
 ROLE: You are an expert in forensic-style signature similarity review for banking documents.
